@@ -1,0 +1,19 @@
+name: graphrivercast
+channels:
+  - pytorch
+  - pyg
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python>=3.9,<3.13
+  - pytorch>=2.0
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.4
+  - pyg::pytorch_geometric>=2.5
+  - pyg::pytorch_scatter>=2.1
+  - numpy>=1.24
+  - scipy>=1.10
+  - pip

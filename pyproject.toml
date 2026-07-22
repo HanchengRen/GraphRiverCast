@@ -1,0 +1,33 @@
+[project]
+name = "graphrivercast"
+version = "2.0.0"
+description = "Topology enables learning-based prediction of global river hydrodynamics"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Hancheng Ren"},
+    {name = "Gang Zhao"},
+    {name = "Shuo Wang"},
+    {name = "Louise Slater"},
+    {name = "Dai Yamazaki"},
+]
+keywords = ["hydrology", "graph-neural-network", "river-forecasting", "deep-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Hydrology",
+]
+
+dependencies = [
+    "torch>=2.0",
+    "torch_geometric>=2.5",
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/HanchengRen/GraphRiverCast"
+Paper = "https://arxiv.org/abs/2602.22293"
