@@ -37,7 +37,7 @@ Zongxue Xu<sup>1</sup>,
 
 <sup>†</sup> Corresponding authors
 
-*Nature*, 2026
+arXiv preprint, 2026
 
 ---
 
@@ -425,7 +425,7 @@ If you use GraphRiverCast in your research, please cite:
              Yamazaki, Dai and Liu, Shu and Fan, Jingfang and Cui, Shibo and
              Yu, Ziming and Kang, Shengyu and Zuo, Depeng and Peng, Dingzhi and
              Xu, Zongxue and Pang, Bo},
-  journal = {Nature},
+  journal = {arXiv preprint arXiv:2602.22293},
   year    = {2026},
   doi     = {},
   url     = {https://arxiv.org/abs/2602.22293}

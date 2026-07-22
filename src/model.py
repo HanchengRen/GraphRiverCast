@@ -12,7 +12,7 @@ Architecture:
 
 Reference:
     Ren et al. (2026). Topology enables learning-based prediction of global
-    river hydrodynamics. Nature.
+    river hydrodynamics. arXiv:2602.22293.
 """
 
 import numbers
