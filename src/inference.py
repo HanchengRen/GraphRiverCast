@@ -3,9 +3,12 @@
 Runs a single forward pass with a pre-trained checkpoint to predict
 river discharge (Q), water depth (H), and channel storage (S).
 
+Supports both NetCDF4 (.nc) and legacy NumPy (.npz) input formats.
+Output is saved as NetCDF4 (predictions.nc).
+
 Usage:
     python -m src.inference \\
-        --checkpoint checkpoints/GRC_ColdStart.ckpt \\
+        --checkpoint checkpoints/pretrain/GRC_ColdStart.ckpt \\
         --data-dir ./data/global \\
         --start-date 2015-01-01 \\
         --history 365 --future 365 \\
@@ -27,6 +30,7 @@ from src.data_utils import (
     build_static_features,
     compute_edge_attrs,
     days_index_2000,
+    load_data_auto,
     normalize_static,
     sign_log1p,
     stack_dynamic_variables,
@@ -129,12 +133,12 @@ def prepare_data(data_dir, start_date, history, future,
     Returns:
         dict with all tensors needed for model forward pass
     """
-    dynamic_npz = np.load(os.path.join(data_dir, "dynamic_var.npz"))
-    static_npz = np.load(os.path.join(data_dir, "static_var.npz"))
-    edge_index = np.load(os.path.join(data_dir, "edge_index.npy"))
+    dynamic_dict, static_dict, edge_index, time_start = load_data_auto(data_dir)
+    if time_start is None:
+        time_start = '2000-01-01'
 
     static_raw, meanstd_dynamic = build_static_features(
-        static_npz, dynamic_npz, DYNAMIC_VARIABLES, standard_wise)
+        static_dict, dynamic_dict, DYNAMIC_VARIABLES, standard_wise)
     pos_edge_attr, neg_edge_attr = compute_edge_attrs(
         static_raw, edge_index, **EDGE_ATTR_INDICES)
 
@@ -151,7 +155,7 @@ def prepare_data(data_dir, start_date, history, future,
 
     static_norm, meanstd_static = normalize_static(static_raw)
 
-    dynamic_all = stack_dynamic_variables(dynamic_npz, DYNAMIC_VARIABLES)
+    dynamic_all = stack_dynamic_variables(dynamic_dict, DYNAMIC_VARIABLES)
 
     seq_len = history + future
     y, m, d = map(int, start_date.split("-"))
@@ -267,13 +271,29 @@ def main():
     gt_phys = gt_norm * d_std + d_mean
 
     # ── Save ──
-    out_path = os.path.join(args.output_dir, "predictions.npz")
-    np.savez_compressed(
-        out_path,
-        predictions=pred_phys,
-        ground_truth=gt_phys,
-        variable_names=np.array(['discharge_m3s', 'water_depth_m', 'storage_m3']),
-    )
+    out_path = os.path.join(args.output_dir, "predictions.nc")
+    try:
+        import xarray as xr
+        T_f, N_f, _ = pred_phys.shape
+        ds_out = xr.Dataset({
+            'discharge': (['time', 'reach'], pred_phys[:, :, 0]),
+            'water_depth': (['time', 'reach'], pred_phys[:, :, 1]),
+            'storage': (['time', 'reach'], pred_phys[:, :, 2]),
+            'discharge_truth': (['time', 'reach'], gt_phys[:, :, 0]),
+            'water_depth_truth': (['time', 'reach'], gt_phys[:, :, 1]),
+            'storage_truth': (['time', 'reach'], gt_phys[:, :, 2]),
+        })
+        ds_out.attrs['units'] = 'discharge: m3/s, water_depth: m, storage: m3'
+        ds_out.attrs['model'] = 'GraphRiverCast'
+        ds_out.to_netcdf(out_path, engine='netcdf4')
+    except ImportError:
+        out_path = os.path.join(args.output_dir, "predictions.npz")
+        np.savez_compressed(
+            out_path,
+            predictions=pred_phys,
+            ground_truth=gt_phys,
+            variable_names=np.array(['discharge_m3s', 'water_depth_m', 'storage_m3']),
+        )
 
     meta_path = os.path.join(args.output_dir, "inference_meta.json")
     meta = {

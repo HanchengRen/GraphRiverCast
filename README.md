@@ -66,11 +66,13 @@ arXiv preprint, 2026
 - [Quick Start](#-quick-start)
 - [Overview](#-overview)
 - [Model Architecture](#-model-architecture)
+- [Node & Edge Feature Specification](#-node--edge-feature-specification)
 - [Global Performance](#-global-performance)
 - [Installation](#-installation)
-- [Data Preparation](#-data-preparation)
+- [Data](#-data)
 - [Inference](#-inference)
 - [Checkpoints](#-checkpoints)
+- [Hyperparameters](#-hyperparameters)
 - [Citation](#-citation)
 - [License](#-license)
 
@@ -87,9 +89,9 @@ cd GraphRiverCast
 conda env create -f environment.yml
 conda activate graphrivercast
 
-# 3. Run inference (prepare your data first — see Data Preparation)
+# 3. Run inference (prepare your data first — see Data section)
 python -m src.inference \
-    --checkpoint checkpoints/GRC_ColdStart.ckpt \
+    --checkpoint checkpoints/pretrain/GRC_ColdStart.ckpt \
     --data-dir ./data/global \
     --start-date 2015-01-01 \
     --history 365 --future 365
@@ -114,62 +116,198 @@ Rivers are central to the global water cycle, yet ~60% of basins lack long-term 
 
 ## 🧬 Model Architecture
 
-GraphRiverCast is a spatio-temporal graph neural network with three complementary encoders:
+GraphRiverCast is a spatio-temporal graph neural network with three complementary encoders operating on a signed directed graph $\mathcal{G}=(\mathcal{V},\mathcal{E}^+,\mathcal{E}^-)$ of $N=127{,}581$ river reaches and $E=127{,}580$ directed edges.
+
+### Computational Flow
+
+At each timestep $t$, the model processes a per-reach feature vector through the following pipeline:
 
 ```
-Input (per reach, per timestep)
-  │
-  ├── Runoff forcing [1]       ─┐
-  ├── River state (Q, H, S) [3] ├──► Feature Encoder ──► Embedding [H]
-  └── Static features [28]    ─┘           │
-                                           ▼
-                              ┌── Feature Mixing (SiLU + MLP) ──┐
-                              │                                  │
-                              ▼                                  │
-                     Signed GCN Encoder                          │
-                    ┌────────────────────┐                       │
-                    │ Upstream → Downstream (pos path)           │
-                    │ Downstream → Upstream (neg path)           │
-                    │ Edge-attribute gating (9-dim)              │
-                    │ Per-node fusion gate                       │
-                    └────────────────────┘                       │
-                              │                                  │
-                              ▼                                  │
-                     Temporal Encoder                            │
-                    ┌────────────────────┐                       │
-                    │ LSTMCell + RMSNorm                         │
-                    │ h_t and c_t normalization                  │
-                    └────────────────────┘                       │
-                              │                                  │
-                              ▼                                  │
-                     Residual Readout ◄──────────────────────────┘
-                              │
-                              ▼
-              Output: ΔQ, ΔH, ΔS (added to current state)
+   ╔═══════════════════════════════════════════════════════════════════════╗
+   ║  Per-reach input vector  x_t ∈ ℝ^32                                 ║
+   ║  ┌──────────┐ ┌──────────────────┐ ┌───────────────────────────┐    ║
+   ║  │ runoff(1)│ │ river state Q,H,S│ │ static geomorphic (28-d) │    ║
+   ║  └─────┬────┘ └────────┬─────────┘ └──────────────┬────────────┘    ║
+   ║        └───────────────┼──────────────────────────┘                 ║
+   ╚════════════════════════╪════════════════════════════════════════════╝
+                            ▼
+                 ┌─────────────────────┐
+                 │ Embedding  Linear   │  x → ℝ^H
+                 └──────────┬──────────┘
+                            ▼
+              ┌───────────────────────────┐
+              │     Feature Mixing        │
+              │ z = x + MLP(RMSNorm(x))   │  SiLU activation
+              │ ℝ^H → ℝ^128 → ℝ^H        │  residual connection
+              └─────────────┬─────────────┘
+                            ▼
+   ╔════════════════════════════════════════════════════════════════════╗
+   ║  Signed GCN Encoder  (L = 2 layers)                               ║
+   ║                                                                    ║
+   ║    ┌────────────────────────┐   ┌────────────────────────┐        ║
+   ║    │ Positive Path (ε⁺)    │   │ Negative Path (ε⁻)    │        ║
+   ║    │ upstream → downstream  │   │ downstream → upstream  │        ║
+   ║    │                        │   │                        │        ║
+   ║    │  EdgeAttrConv × L      │   │  EdgeAttrConv × L      │        ║
+   ║    │  + GELU + residual     │   │  + GELU + residual     │        ║
+   ║    │  edge_attr: 9-dim      │   │  edge_attr: 9-dim      │        ║
+   ║    └──────────┬─────────────┘   └──────────┬─────────────┘        ║
+   ║               │    h_pos                    │    h_neg             ║
+   ║               └──────────┬─────────────────┘                      ║
+   ║                          ▼                                         ║
+   ║           ┌──────────────────────────┐                             ║
+   ║           │  Per-node Fusion Gate g   │                             ║
+   ║           │  g = σ(W[h⁺ ‖ h⁻] + b)  │                             ║
+   ║           │  x ← x + g·h⁺ + (1−g)·h⁻│                             ║
+   ║           └──────────────────────────┘                             ║
+   ╚═══════════════════════════╪════════════════════════════════════════╝
+                               ▼
+   ╔════════════════════════════════════════════════════════════════════╗
+   ║  Temporal Encoder                                                  ║
+   ║                                                                    ║
+   ║  ┌──────────────────────────────────────────────┐                 ║
+   ║  │  LSTMCell(RMSNorm(x_t), RMSNorm(h_{t-1}),   │                 ║
+   ║  │           RMSNorm(c_{t-1}))                   │                 ║
+   ║  │                                               │                 ║
+   ║  │  h_t, c_t ← LSTM(x_t, h_{t-1}, c_{t-1})     │                 ║
+   ║  │  x_t ← x_t + h_t                             │                 ║
+   ║  └──────────────────────────────────────────────┘                 ║
+   ╚═══════════════════════════╪════════════════════════════════════════╝
+                               ▼
+                 ┌──────────────────────────┐
+                 │    Residual Readout      │
+                 │  Δ = Linear(RMSNorm(x))  │
+                 │  ŷ_t = y_{t-1} + Δ       │  y = (Q, H, S)
+                 └──────────────────────────┘
 ```
 
-### Key Components
+### EdgeAttrConv — Edge-Attribute-Gated Message Passing
 
-| Component | Description |
-|:---|:---|
-| **EdgeAttrConv** | Message passing with edge-attribute gating: `msg = Linear(x_j) × σ(EdgeMLP(edge_attr))` |
-| **SignedGCN Encoder** | Dual-path graph convolution — independent weights for upstream→downstream and downstream→upstream directions |
-| **9-dim Edge Attributes** | 8 static hydraulic-geometric features (slope, bed slope, elevation diff, distance, Manning n, area/width/depth ratios) + 1 dynamic water-depth gradient |
-| **Fusion Gate** | Per-node learned gate blending upstream and downstream representations: `x = x + g·h_pos + (1−g)·h_neg` |
-| **LSTMCell** | Single-step temporal encoder with RMSNorm on both hidden and cell states |
-| **Residual Readout** | Predicts state change Δ(Q, H, S), added to current state for autoregressive rollout |
+The core message passing layer modulates neighbor messages with direction-aware hydraulic edge attributes:
+
+$$\mathbf{m}_{j \to i} = \mathbf{W}\mathbf{x}_j \odot \sigma\!\left(\mathrm{MLP}(\mathbf{e}_{j \to i})\right)$$
+
+$$\mathbf{x}_i' = \sum_{j \in \mathcal{N}(i)} \mathbf{m}_{j \to i}$$
+
+where $\mathbf{e}_{j \to i} \in \mathbb{R}^9$ are the direction-specific edge attributes (8 static hydraulic-geometric + 1 dynamic water-depth gradient), and $\sigma$ is the sigmoid gating function. The MLP consists of two linear layers with SiLU activation.
+
+### Fusion Gate — Bidirectional Information Integration
+
+Each reach $i$ receives information from both upstream (positive) and downstream (negative) paths:
+
+$$g_i = \sigma(\mathbf{W}_g[\mathbf{h}_i^+ \| \mathbf{h}_i^-] + \mathbf{b}_g)$$
+
+$$\mathbf{x}_i \leftarrow \mathbf{x}_i + g_i \cdot \mathbf{h}_i^+ + (1 - g_i) \cdot \mathbf{h}_i^-$$
+
+The model learns per-node routing decisions — upstream-dominated reaches (confluences) naturally develop $g_i \to 1$, while downstream-influenced reaches (backwater, tidal) develop $g_i \to 0$.
 
 ### Model Specifications
 
-| Parameter | Value |
+| Component | Specification |
 |:---|:---|
-| Hidden dimension | 64 |
-| Feature mixing dimension | 128 |
-| GCN layers | 2 |
-| Total parameters | 96,643 |
-| Input features | 32 (1 runoff + 3 river state + 28 static) |
-| Output channels | 3 (Q, H, S) |
-| Edge attribute dimension | 9 (8 static + 1 dynamic) |
+| **Architecture** | SignedGCN (2-layer) + LSTMCell + RMSNorm |
+| **Total parameters** | **96,643** |
+| **Hidden dimension** $H$ | 64 |
+| **Feature mixing dimension** | 128 |
+| **GCN layers** $L$ | 2 |
+| **Input dimension** | 32 (1 runoff + 3 river + 28 static) |
+| **Output dimension** | 3 (Q, H, S) |
+| **Edge attribute dimension** | 9 (8 static + 1 dynamic) |
+| **Normalization** | RMSNorm (Zhang & Sennrich, 2019) |
+| **Activation** | GELU (GCN), SiLU (feature mixing) |
+| **Dropout** | 0.1 |
+
+---
+
+## 📐 Node & Edge Feature Specification
+
+### Node Features (32 dimensions)
+
+GraphRiverCast concatenates three feature groups into a 32-dimensional per-reach input vector:
+
+<table>
+<tr>
+  <th>Group</th>
+  <th>Dim</th>
+  <th>Components</th>
+  <th>Source</th>
+</tr>
+<tr>
+  <td rowspan="1"><b>Forcing</b></td>
+  <td>1</td>
+  <td>Runoff <code>R</code></td>
+  <td>GRADES</td>
+</tr>
+<tr>
+  <td rowspan="1"><b>River State</b></td>
+  <td>3</td>
+  <td>Discharge <code>Q</code>, Water depth <code>H</code>, Channel storage <code>S</code></td>
+  <td>CaMa-Flood / predicted</td>
+</tr>
+<tr>
+  <td rowspan="4"><b>Static Geomorphic</b></td>
+  <td>10</td>
+  <td>Catchment area, Ground elevation, Channel depth, Manning <i>n</i>, Grid area, Downstream distance, Channel length, Channel width, Upstream area, Bankfull width</td>
+  <td>MERIT Hydro / CaMa-Flood</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td>Dynamic statistics: μ(Q), σ(Q), μ(H), σ(H), μ(S), σ(S), μ(R), σ(R)</td>
+  <td>Computed from training period</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td>Floodplain height profile (10 elevation bins)</td>
+  <td>CaMa-Flood</td>
+</tr>
+<tr>
+  <td><b>= 28</b></td>
+  <td colspan="2"><i>Static subtotal</i></td>
+</tr>
+</table>
+
+### Edge Attributes (9 dimensions)
+
+Each directed edge carries a **9-dimensional attribute vector** encoding hydraulic-geometric properties that govern flow routing. Attributes are computed separately for positive (upstream→downstream) and negative (downstream→upstream) directions:
+
+| Dim | Attribute | Forward (ε⁺) Formula | Physical Meaning |
+|:---:|:---|:---|:---|
+| 0 | Ground slope | $(z_{\rm src} - z_{\rm dst}) / d \times 10^3$ | Gravitational driving gradient (‰) |
+| 1 | Bed slope | $((z_{\rm src} - h_{\rm src}^{\rm bed}) - (z_{\rm dst} - h_{\rm dst}^{\rm bed})) / d \times 10^3$ | Riverbed gradient, determines base flow (‰) |
+| 2 | Elevation diff | $z_{\rm src} - z_{\rm dst}$ | Absolute drop between reaches (m) |
+| 3 | Distance | $d_{\rm src \to dst}$ | Inter-node channel distance (m) |
+| 4 | Manning coeff | $n_{\rm src}$ | Roughness resistance at source (–) |
+| 5 | Area ratio | $A_{\rm dst}^{\rm up} / A_{\rm src}^{\rm up}$ | Relative catchment size — detects confluence (–) |
+| 6 | Width ratio | $w_{\rm dst} / w_{\rm src}$ | Channel expansion/contraction (–) |
+| 7 | Depth ratio | $h_{\rm dst}^{\rm riv} / h_{\rm src}^{\rm riv}$ | Channel geometry transition (–) |
+| 8 | $\Delta H$ (dynamic) | $H_{\rm src}^t - H_{\rm dst}^t$ | Instantaneous water-depth gradient (m) |
+
+> **Direction-awareness:** For the negative path $\mathcal{E}^-$, slopes and differences are negated and ratios inverted, so the edge MLP receives physically consistent information for reverse (backwater) flow. The 9th dimension — the dynamic water-depth gradient $\Delta H$ — is recomputed at every timestep from the model's current state prediction.
+
+### Static Variables (NetCDF keys)
+
+| Key | Variable | Unit | Shape | Description |
+|:---|:---|:---|:---|:---|
+| `ctmare` | Catchment area | m² | [N] | Contributing drainage area per reach |
+| `elevtn` | Ground elevation | m | [N] | Mean surface elevation at reach |
+| `rivhgt` | Channel depth | m | [N] | Bankfull channel depth |
+| `rivman` | Manning roughness | – | [N] | Roughness coefficient for flow resistance |
+| `grdare` | Grid area | m² | [N] | Area of the computational grid cell |
+| `nxtdst` | Downstream distance | m | [N] | Distance to next downstream reach |
+| `rivlen` | Channel length | m | [N] | Length of the river channel segment |
+| `rivwth_gwdlr` | Channel width | m | [N] | Width from GWD-LR dataset |
+| `uparea` | Upstream area | m² | [N] | Total upstream drainage area |
+| `width` | Bankfull width | m | [N] | Width at bankfull discharge |
+| `fldhgt` | Floodplain profile | m | [N, 10] | 10-bin elevation profile above bankfull |
+
+### Dynamic Variables (NetCDF keys)
+
+| Key | Variable | Unit | Shape | Description |
+|:---|:---|:---|:---|:---|
+| `outflw` | Discharge | m³/s | [T, N] | River discharge at each reach |
+| `rivdph` | Water depth | m | [T, N] | Water depth in the main channel |
+| `storage` | Channel storage | m³ | [T, N] | Total water volume in the reach |
+| `runoff` | Runoff forcing | m³/s | [T, N] | Lateral runoff input from land surface |
 
 ---
 
@@ -192,10 +330,18 @@ Input (per reach, per timestep)
 | Encoder | ColdStart contribution | HotStart contribution |
 |:---|:---:|:---:|
 | **Graph (topology)** | **50%** | 22% |
-| Feature | 38% | 19% |
-| Temporal | 12% | **59%** |
+| Feature (geomorphic) | 38% | 19% |
+| Temporal (LSTM) | 12% | **59%** |
 
 > ColdStart shifts the model from temporal autoregression to **topology-governed routing** — the graph encoder becomes the dominant contributor when historical states are removed.
+
+### Architecture Ablation (2×2 design)
+
+| Architecture | Graph-aware | Temporal | Median NSE | Parameters |
+|:---|:---:|:---|:---:|:---:|
+| **GRC (SignedGCN + LSTM)** | ✓ | LSTM | **0.987** | 96K |
+| Transformer (no graph) | ✗ | Self-attention | 0.974 | 180K |
+| LSTM (no graph) | ✗ | LSTM | 0.878 | 360K |
 
 ---
 
@@ -238,97 +384,58 @@ scripts\setup_windows.bat
 
 ---
 
-## 📊 Data Preparation
+## 📂 Data
 
-GraphRiverCast requires three input files placed in a data directory:
+### Data Acquisition
 
-### Required Files
+Detailed download instructions are in **[`data/DATA_GUIDE.md`](data/DATA_GUIDE.md)**.
 
-<table>
-<tr><th>File</th><th>Format</th><th>Description</th></tr>
-<tr>
-  <td><code>dynamic_var.npz</code></td>
-  <td>NumPy compressed</td>
-  <td>Time-varying river variables and forcing</td>
-</tr>
-<tr>
-  <td><code>static_var.npz</code></td>
-  <td>NumPy compressed</td>
-  <td>Geomorphic and channel geometry features</td>
-</tr>
-<tr>
-  <td><code>edge_index.npy</code></td>
-  <td>NumPy array</td>
-  <td>River network topology (directed graph)</td>
-</tr>
-</table>
-
-### Dynamic Variables (`dynamic_var.npz`)
-
-Each variable is a `float64` array of shape `[T, N]` where `T` = number of daily timesteps and `N` = number of river reaches.
-
-| Key | Variable | Unit | Description |
-|:---|:---|:---|:---|
-| `outflw` | Discharge | m³/s | River discharge at each reach |
-| `rivdph` | Water depth | m | Water depth in the main channel |
-| `storage` | Channel storage | m³ | Total water volume stored in the reach |
-| `runoff` | Runoff | m³/s | Lateral runoff forcing into each reach |
-
-### Static Variables (`static_var.npz`)
-
-Each variable is an array of shape `[N]` or `[N, D]`.
-
-| Key | Variable | Unit | Shape |
-|:---|:---|:---|:---|
-| `ctmare` | Catchment area | m² | [N] |
-| `elevtn` | Ground elevation | m | [N] |
-| `rivhgt` | Channel depth (bankfull) | m | [N] |
-| `rivman` | Manning roughness | - | [N] |
-| `grdare` | Grid area | m² | [N] |
-| `nxtdst` | Distance to next downstream | m | [N] |
-| `rivlen` | Channel length | m | [N] |
-| `rivwth_gwdlr` | Channel width | m | [N] |
-| `uparea` | Upstream drainage area | m² | [N] |
-| `width` | Bankfull width | m | [N] |
-| `fldhgt` | Floodplain height profile | m | [N, 10] |
-
-### Edge Index (`edge_index.npy`)
-
-- Shape: `[2, E]` where `E` = number of edges
-- Row 0: source node indices (upstream)
-- Row 1: target node indices (downstream)
-- Directed edges following natural flow direction
-
-### Data Sources
-
-| Data | Source | Reference |
+| Data | Source | URL |
 |:---|:---|:---|
-| River network & geomorphic features | MERIT Hydro / CaMa-Flood | [Yamazaki et al., 2019](https://doi.org/10.1029/2019WR024873); [Yamazaki et al., 2011](https://doi.org/10.1029/2010WR009726) |
-| Runoff forcing | GRADES | [Lin et al., 2019](https://doi.org/10.1029/2019WR025287) |
-| Gauge observations (fine-tuning) | GRDC | [grdc.bafg.de](https://grdc.bafg.de) |
-| River simulations (pre-training) | CaMa-Flood v4 | [Yamazaki et al., 2011](https://doi.org/10.1029/2010WR009726) |
+| River network, geomorphic features, simulation targets | CaMa-Flood v4 / MERIT Hydro | [hydro.iis.u-tokyo.ac.jp/~yamadai/cama-flood](http://hydro.iis.u-tokyo.ac.jp/~yamadai/cama-flood/) |
+| Runoff forcing | GRADES (Lin et al., 2019) | [doi.org/10.1029/2019WR025287](https://doi.org/10.1029/2019WR025287) |
+| Gauge observations (fine-tuning only) | GRDC | [grdc.bafg.de](https://grdc.bafg.de/) |
 
-### Creating Data Files
+> Raw data are not distributed with this repository due to size and license restrictions.
 
-```python
-import numpy as np
+### Data Format
 
-# Example: create dynamic_var.npz
-# T = number of daily timesteps, N = number of river reaches
-T, N = 7305, 127581  # e.g., 20 years of daily data
+GraphRiverCast accepts data in **NetCDF4** format (recommended) or legacy NumPy archives.
 
-np.savez("data/global/dynamic_var.npz",
-    outflw=np.zeros((T, N), dtype=np.float64),   # discharge [m³/s]
-    rivdph=np.zeros((T, N), dtype=np.float64),    # water depth [m]
-    storage=np.zeros((T, N), dtype=np.float64),   # storage [m³]
-    runoff=np.zeros((T, N), dtype=np.float64),    # runoff forcing [m³/s]
-)
+#### NetCDF4 (recommended)
 
-# Example: create edge_index.npy
-E = 127580  # number of edges
-edge_index = np.zeros((2, E), dtype=np.int64)
-np.save("data/global/edge_index.npy", edge_index)
+A single `.nc` file containing all variables:
+
 ```
+data/global/simulation.nc
+  ├── Dimensions: time (T), reach (N), edge (E), fldhgt_bin (10)
+  ├── Dynamic variables:  outflw[T,N], rivdph[T,N], storage[T,N], runoff[T,N]
+  ├── Static variables:   ctmare[N], elevtn[N], rivhgt[N], rivman[N], ...
+  ├── Graph:              edge_index[2,E]
+  └── Attributes:         time_start="2000-01-01"
+```
+
+#### Legacy NumPy format
+
+Three files in the same directory:
+
+| File | Format | Shape | Contents |
+|:---|:---|:---|:---|
+| `dynamic_var.npz` | NumPy compressed | `[T, N]` per key | outflw, rivdph, storage, runoff |
+| `static_var.npz` | NumPy compressed | `[N]` or `[N, D]` | 11 geomorphic variables |
+| `edge_index.npy` | NumPy array | `[2, E]` | Directed edge list (upstream → downstream) |
+
+The inference script auto-detects the format.
+
+### Data Dimensions
+
+| Symbol | Description | Global Value |
+|:---|:---|:---|
+| $T$ | Daily timesteps | 7,305 (2000–2019) |
+| $N$ | River reaches | 127,581 |
+| $E$ | Directed edges | 127,580 |
+| $D_{\rm static}$ | Static features | 28 |
+| $D_{\rm edge}$ | Edge attributes | 9 (8 static + 1 dynamic) |
 
 ---
 
@@ -338,7 +445,7 @@ np.save("data/global/edge_index.npy", edge_index)
 
 ```bash
 python -m src.inference \
-    --checkpoint checkpoints/GRC_ColdStart.ckpt \
+    --checkpoint checkpoints/pretrain/GRC_ColdStart.ckpt \
     --data-dir ./data/global \
     --start-date 2015-01-01 \
     --history 365 --future 365 \
@@ -350,14 +457,14 @@ python -m src.inference \
 ```bash
 # ColdStart: state-free prediction (recommended for most use cases)
 python -m src.inference \
-    --checkpoint checkpoints/GRC_ColdStart.ckpt \
+    --checkpoint checkpoints/pretrain/GRC_ColdStart.ckpt \
     --data-dir ./data/global \
     --start-date 2015-01-01 \
     --history 365 --future 365
 
 # HotStart: autoregressive prediction with initial states
 python -m src.inference \
-    --checkpoint checkpoints/GRC_HotStart.ckpt \
+    --checkpoint checkpoints/pretrain/GRC_HotStart.ckpt \
     --data-dir ./data/global \
     --start-date 2015-01-01 \
     --history 365 --future 365
@@ -368,7 +475,7 @@ python -m src.inference \
 | Argument | Default | Description |
 |:---|:---|:---|
 | `--checkpoint` | *(required)* | Path to `.ckpt` file |
-| `--data-dir` | *(required)* | Directory with input data files |
+| `--data-dir` | *(required)* | Directory with `.nc` or `.npz` data files |
 | `--output-dir` | `./output` | Directory for prediction outputs |
 | `--start-date` | `2015-01-01` | Start of history window (YYYY-MM-DD) |
 | `--history` | `365` | History window in days |
@@ -379,19 +486,20 @@ python -m src.inference \
 
 ### Output Format
 
-Predictions are saved as `predictions.npz` with:
+Predictions are saved as `predictions.nc` (NetCDF4):
 
-| Key | Shape | Description |
-|:---|:---|:---|
-| `predictions` | [T_future, N, 3] | Predicted Q, H, S in physical units |
-| `ground_truth` | [T_future, N, 3] | Ground truth Q, H, S (if available) |
-| `variable_names` | [3] | `['discharge_m3s', 'water_depth_m', 'storage_m3']` |
+| Variable | Shape | Unit | Description |
+|:---|:---|:---|:---|
+| `discharge` | [T, N] | m³/s | Predicted river discharge |
+| `water_depth` | [T, N] | m | Predicted water depth |
+| `storage` | [T, N] | m³ | Predicted channel storage |
+| `discharge_truth` | [T, N] | m³/s | Ground truth (if available) |
 
 Metadata is saved as `inference_meta.json` with timing, configuration, and output shape.
 
 ### GPU Memory Requirements
 
-| Network Size | Approx. VRAM | Device |
+| Network Size | Approx. VRAM | Recommended Device |
 |:---|:---|:---|
 | ~5,000 reaches | ~2 GB | Any GPU |
 | ~50,000 reaches | ~8 GB | RTX 3080+ |
@@ -403,14 +511,86 @@ Metadata is saved as `inference_meta.json` with timing, configuration, and outpu
 
 ## 📦 Checkpoints
 
-Pre-trained model weights are included in the `checkpoints/` directory:
+All model weights are included in the `checkpoints/` directory (9 files, ~22 MB total).
 
-| Checkpoint | Regime | Median NSE | Size | Description |
+### Pre-trained Models (`checkpoints/pretrain/`)
+
+Global models pre-trained on CaMa-Flood v4 simulations (2000–2019), 127,581 reaches.
+
+| File | Regime | Median NSE | Params | Description |
 |:---|:---|:---:|:---:|:---|
-| `GRC_ColdStart.ckpt` | ColdStart | 0.936 | 1.7 MB | State-free prediction (recommended) |
-| `GRC_HotStart.ckpt` | HotStart | 0.932 | 1.7 MB | Autoregressive prediction |
+| `GRC_ColdStart.ckpt` | ColdStart | **0.936** | 96,643 | State-free prediction (recommended) |
+| `GRC_HotStart.ckpt` | HotStart | 0.932 | 96,643 | Autoregressive with initial states |
 
-Both checkpoints were pre-trained on CaMa-Flood v4 simulations (2000–2019) across 127,581 reaches of the global river network.
+### Architecture Ablation (`checkpoints/ablation/`)
+
+2×2 ablation comparing graph-aware vs. non-graph architectures (ColdStart regime).
+
+| File | Architecture | Median NSE | Params | Graph-aware |
+|:---|:---|:---:|:---:|:---:|
+| `GRC_V2.ckpt` | SignedGCN + LSTM | **0.987** | 96K | ✓ |
+| `LSTM.ckpt` | LSTM (no graph) | 0.878 | 360K | ✗ |
+| `Transformer.ckpt` | Transformer (no graph) | 0.974 | 180K | ✗ |
+
+### Fine-tuned Models (`checkpoints/finetune/`)
+
+Models fine-tuned with GRDC gauge supervision (1,996 gauges), evaluated on held-out test period.
+
+| File | Init | Architecture | Description |
+|:---|:---|:---|:---|
+| `GRC_pretrained.ckpt` | Pre-trained | GRC (SignedGCN + LSTM) | Best overall — pretrain → finetune |
+| `GRC_scratch.ckpt` | Random | GRC (SignedGCN + LSTM) | From-scratch baseline |
+| `LSTM_pretrained.ckpt` | Pre-trained | LSTM seq2seq | LSTM pretrain → finetune |
+| `LSTM_scratch.ckpt` | Random | LSTM seq2seq | LSTM from-scratch baseline |
+
+---
+
+## ⚙️ Hyperparameters
+
+### Pre-training Configuration
+
+| Parameter | ColdStart | HotStart |
+|:---|:---|:---|
+| Hidden dimension $H$ | 64 | 64 |
+| Feature mixing dimension | 128 | 128 |
+| GCN layers $L$ | 2 | 2 |
+| Edge feature dimension | 9 | 9 |
+| Dropout rate | 0.1 | 0.1 |
+| History window (spin-up) | 365 days | 21 days |
+| Future window (training) | 7 days | 7 days |
+| River state input | No (`use_river_var=False`) | Yes (`use_river_var=True`) |
+| Optimizer | Adam | Adam |
+| Learning rate | $10^{-3}$ | $10^{-3}$ |
+| Weight decay | 0 | 0 |
+| LR scheduler | CosineAnnealing ($T_{\max}$=200, $\eta_{\min}$=$10^{-5}$) | CosineAnnealing ($T_{\max}$=200, $\eta_{\min}$=$10^{-5}$) |
+| Max epochs | 200 | 200 |
+| Early stopping | patience=10, monitor=val median NSE | patience=10 |
+| Gradient clipping | 1.0 | 1.0 |
+| Precision | FP16 mixed | FP16 mixed |
+| Effective batch size | 1 × 8 GPU × 16 accum = 128 | 4 × 8 GPU × 4 accum = 128 |
+| Seed | 27 | 27 |
+
+### Fine-tuning Configuration
+
+| Parameter | Simulation Fine-tuning | Observation Fine-tuning |
+|:---|:---|:---|
+| Init checkpoint | Pre-trained ColdStart | Pre-trained ColdStart |
+| Optimizer | AdamW (lr=$10^{-3}$, wd=$10^{-4}$) | Adam (lr=$6 \times 10^{-4}$, wd=$10^{-4}$) |
+| LR scheduler | CosineAnnealing ($T_{\max}$=495) | CosineAnnealing |
+| Warmup epochs | 5 | — |
+| Max epochs | 500 | 200 |
+| Early stopping patience | 20 | 10 |
+| Effective batch size | 4 × 4 GPU × 8 accum = 128 | 4 |
+| History / Future window | 21 / 7 days | 60 / 30 days |
+| Loss | HydroPhysicsLoss | HydroPhysicsLoss ($\lambda_H$=1.0) |
+
+### Data Splits
+
+| Split | Period | Use |
+|:---|:---|:---|
+| Training | 2000-01-01 — 2015-12-31 | Model optimization |
+| Validation | 2016-01-01 — 2017-12-31 | Early stopping & checkpoint selection |
+| Testing | 2018-01-01 — 2019-12-31 | Final held-out evaluation |
 
 ---
 

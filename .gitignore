@@ -1,5 +1,6 @@
-# Data
-data/
+# Data (keep the guide, ignore raw data files)
+data/**
+!data/DATA_GUIDE.md
 *.npz
 *.npy
 

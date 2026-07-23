@@ -3,13 +3,12 @@
 Handles construction of static features, edge attributes, normalization,
 and pre-transforms needed to prepare input data for the model.
 
-Data format requirements:
-    dynamic_var.npz — keys: outflw, rivdph, storage, runoff (each [T, N])
-    static_var.npz  — keys: ctmare, elevtn, rivhgt, rivman, grdare, nxtdst,
-                            rivlen, rivwth_gwdlr, uparea, width, fldhgt
-    edge_index.npy  — shape [2, E], directed edges (src → dst)
+Supported data formats:
+    NetCDF4 (.nc) — single file containing all variables (recommended)
+    Legacy NPZ    — dynamic_var.npz + static_var.npz + edge_index.npy
 """
 
+import os
 import numpy as np
 from datetime import date
 
@@ -260,3 +259,55 @@ def date_to_index(date_str, time_start='2000-01-01'):
     if idx < 0:
         raise ValueError(f"Target date {date_str} is before data start {time_start}")
     return idx
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  NetCDF4 data loading
+# ═══════════════════════════════════════════════════════════════════
+
+def load_from_netcdf(nc_path):
+    """Load all model inputs from a single NetCDF4 file.
+
+    Returns:
+        dynamic_dict:  {var_name: [T, N] array}
+        static_dict:   {var_name: [N] or [N, D] array}
+        edge_index:    [2, E] int64 array
+        time_start:    date string or None
+    """
+    import xarray as xr
+    ds = xr.open_dataset(nc_path, engine="netcdf4")
+
+    dynamic_dict = {key: ds[key].values for key in DYNAMIC_VARIABLES if key in ds}
+    static_keys = [k for k in STATIC_VARIABLES if k in ds and k != 'fldhgt']
+    static_dict = {key: ds[key].values for key in static_keys}
+    if 'fldhgt' in ds:
+        static_dict['fldhgt'] = ds['fldhgt'].values
+
+    edge_index = ds['edge_index'].values.astype(np.int64)
+    time_start = ds.attrs.get('time_start', None)
+    ds.close()
+    return dynamic_dict, static_dict, edge_index, time_start
+
+
+def load_data_auto(data_dir):
+    """Auto-detect data format (NetCDF4 or legacy NPZ) and load.
+
+    Looks for *_sim.nc or *.nc files first; falls back to npz.
+
+    Returns:
+        dynamic_dict, static_dict, edge_index, time_start
+    """
+    import glob as glob_mod
+    nc_files = glob_mod.glob(os.path.join(data_dir, "*_sim.nc"))
+    if not nc_files:
+        nc_files = glob_mod.glob(os.path.join(data_dir, "*.nc"))
+
+    if nc_files:
+        return load_from_netcdf(nc_files[0])
+
+    dynamic_npz = np.load(os.path.join(data_dir, "dynamic_var.npz"))
+    static_npz = np.load(os.path.join(data_dir, "static_var.npz"))
+    edge_index = np.load(os.path.join(data_dir, "edge_index.npy"))
+    dynamic_dict = {k: dynamic_npz[k] for k in DYNAMIC_VARIABLES if k in dynamic_npz}
+    static_dict = {k: static_npz[k] for k in STATIC_VARIABLES if k in static_npz}
+    return dynamic_dict, static_dict, edge_index, '2000-01-01'
