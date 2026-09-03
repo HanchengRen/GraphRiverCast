@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![PyG 2.5+](https://img.shields.io/badge/PyG-2.5%2B-7B3FA0.svg)](https://pyg.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
 **Topology enables learning-based prediction of global river hydrodynamics**
 
@@ -17,6 +17,7 @@
 [Dai Yamazaki](mailto:)<sup>5</sup>,
 Shu Liu<sup>6</sup>,
 Jingfang Fan<sup>4</sup>,
+Xueying Li<sup>2</sup>,
 Shibo Cui<sup>7</sup>,
 Ziming Yu<sup>8</sup>,
 Shengyu Kang<sup>9</sup>,
@@ -602,9 +603,9 @@ If you use GraphRiverCast in your research, please cite:
 @article{ren2026topology,
   title   = {Topology enables learning-based prediction of global river hydrodynamics},
   author  = {Ren, Hancheng and Zhao, Gang and Wang, Shuo and Slater, Louise and
-             Yamazaki, Dai and Liu, Shu and Fan, Jingfang and Cui, Shibo and
-             Yu, Ziming and Kang, Shengyu and Zuo, Depeng and Peng, Dingzhi and
-             Xu, Zongxue and Pang, Bo},
+             Yamazaki, Dai and Liu, Shu and Fan, Jingfang and Li, Xueying and
+             Cui, Shibo and Yu, Ziming and Kang, Shengyu and Zuo, Depeng and
+             Peng, Dingzhi and Xu, Zongxue and Pang, Bo},
   journal = {arXiv preprint arXiv:2602.22293},
   year    = {2026},
   doi     = {},
@@ -616,7 +617,23 @@ If you use GraphRiverCast in your research, please cite:
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the
+[Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License (CC BY-NC-ND 4.0)](https://creativecommons.org/licenses/by-nc-nd/4.0/).
+
+You are free to **share** the code, trained weights and documentation in this
+repository for **non-commercial** purposes, provided you give appropriate credit
+and link to the licence. You may **not** use the material for commercial
+purposes, and you may **not** distribute modified versions of it. Modifying the
+material for your own non-commercial research is permitted, but the modified
+version may not be redistributed.
+
+**Commercial licensing.** Commercial use is not granted by this licence. To
+discuss a commercial licence, please contact the corresponding authors,
+[Bo Pang](mailto:pb@bnu.edu.cn) and [Gang Zhao](mailto:zhao.g.eb91@m.isct.ac.jp).
+
+**Prior releases.** Releases of this repository distributed before this change
+were made available under the MIT License. Those grants remain in force for the
+versions to which they applied.
 
 ---
 

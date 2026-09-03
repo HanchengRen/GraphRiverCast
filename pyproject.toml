@@ -3,7 +3,7 @@ name = "graphrivercast"
 version = "2.0.0"
 description = "Topology enables learning-based prediction of global river hydrodynamics"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "CC-BY-NC-ND-4.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "Hancheng Ren"},
@@ -16,7 +16,7 @@ keywords = ["hydrology", "graph-neural-network", "river-forecasting", "deep-lear
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Hydrology",
 ]
