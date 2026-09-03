@@ -629,8 +629,10 @@ material for your own non-commercial research is permitted, but the modified
 version may not be redistributed.
 
 **Commercial licensing.** Commercial use is not granted by this licence. To
-discuss a commercial licence, please contact the corresponding authors,
-[Bo Pang](mailto:pb@bnu.edu.cn) and [Gang Zhao](mailto:zhao.g.eb91@m.isct.ac.jp).
+discuss a commercial licence, please contact
+[Hancheng Ren](mailto:hancheng.ren@mail.bnu.edu.cn),
+[Louise Slater](mailto:louise.slater@ouce.ox.ac.uk) or
+[Gang Zhao](mailto:zhao.g.eb91@m.isct.ac.jp).
 
 **Prior releases.** Releases of this repository distributed before this change
 were made available under the MIT License. Those grants remain in force for the
