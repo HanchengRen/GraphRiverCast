@@ -8,7 +8,7 @@
 [![PyG 2.5+](https://img.shields.io/badge/PyG-2.5%2B-7B3FA0.svg)](https://pyg.org/)
 [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-**Topology enables learning-based prediction of global river hydrodynamics**
+**Topology enables learning-based hydrodynamic prediction of the global river system**
 
 [Hancheng Ren](mailto:)<sup>1,2</sup>,
 [Gang Zhao](mailto:zhao.g.eb91@m.isct.ac.jp)<sup>1,3,†</sup>,
@@ -47,13 +47,13 @@ arXiv preprint, 2026
 <p align="center">
   <img src="figures/figure1.png" width="100%" alt="GraphRiverCast Framework">
 </p>
-<p align="center"><b>Figure 1.</b> GraphRiverCast enables state-free, zero-shot prediction of global river hydrodynamics. <b>a,</b> The global river network (127,581 reaches, ~4.4 million km). <b>b,</b> Dynamical rationale: rivers are strongly dissipative — initial-state influence decays, making state-free (ColdStart) prediction tractable. Architecture: feature encoder + graph encoder (signed bidirectional GCN) + temporal encoder (LSTM). <b>c,</b> Two-stage training: pretrain on CaMa-Flood simulations → finetune on sparse GRDC gauges → zero-shot global inference.</p>
+<p align="center"><b>Figure 1.</b> GraphRiverCast enables initial-state-free, zero-shot prediction of global river states. <b>a,</b> The global river network (127,581 reaches, ~4.4 million km). <b>b,</b> Dynamical rationale: rivers are strongly dissipative — initial-state influence decays, making initial-state-free (ColdStart) prediction tractable. Architecture: feature encoder + graph encoder (signed bidirectional GCN) + temporal encoder (LSTM). <b>c,</b> Two-stage training: pretrain on CaMa-Flood simulations → finetune on sparse GRDC gauges → zero-shot global inference.</p>
 
 ---
 
 ## Highlights
 
-- **State-free prediction (ColdStart)** — reconstructs discharge, water depth and channel storage across 127,581 river reaches worldwide without any historical river states
+- **Initial-state-free prediction (ColdStart)** — reconstructs discharge, water depth and channel storage across 127,581 river reaches worldwide without any historical river states
 - **Single unified global model** — one model for the entire planet, not a patchwork of basin-specific models
 - **~97K parameters** — lightweight enough to run inference on a consumer GPU
 - **ColdStart NSE 0.936** at 13-day lead, sustaining skill out to 700+ days (100× beyond training horizon)
@@ -102,7 +102,7 @@ python -m src.inference \
 
 ## 🌊 Overview
 
-Rivers are central to the global water cycle, yet ~60% of basins lack long-term records needed to initialise standard autoregressive models. GraphRiverCast exploits the **strongly dissipative** nature of rivers — unlike the chaotic atmosphere, river initial-condition perturbations decay rather than amplify — enabling **state-free prediction** from runoff forcing and network topology alone.
+Rivers are central to the global water cycle, yet ~60% of basins lack long-term records needed to initialise standard autoregressive models. GraphRiverCast exploits the **strongly dissipative** nature of rivers — unlike the chaotic atmosphere, river initial-condition perturbations decay rather than amplify — enabling **initial-state-free prediction** from runoff forcing and network topology alone.
 
 ### ColdStart vs HotStart
 
@@ -456,7 +456,7 @@ python -m src.inference \
 ### ColdStart vs HotStart
 
 ```bash
-# ColdStart: state-free prediction (recommended for most use cases)
+# ColdStart: initial-state-free prediction (recommended for most use cases)
 python -m src.inference \
     --checkpoint checkpoints/pretrain/GRC_ColdStart.ckpt \
     --data-dir ./data/global \
@@ -520,7 +520,7 @@ Global models pre-trained on CaMa-Flood v4 simulations (2000–2019), 127,581 re
 
 | File | Regime | Median NSE | Params | Description |
 |:---|:---|:---:|:---:|:---|
-| `GRC_ColdStart.ckpt` | ColdStart | **0.936** | 96,643 | State-free prediction (recommended) |
+| `GRC_ColdStart.ckpt` | ColdStart | **0.936** | 96,643 | Initial-state-free prediction (recommended) |
 | `GRC_HotStart.ckpt` | HotStart | 0.932 | 96,643 | Autoregressive with initial states |
 
 ### Architecture Ablation (`checkpoints/ablation/`)
@@ -601,7 +601,8 @@ If you use GraphRiverCast in your research, please cite:
 
 ```bibtex
 @article{ren2026topology,
-  title   = {Topology enables learning-based prediction of global river hydrodynamics},
+  title   = {Topology enables learning-based hydrodynamic prediction of the
+             global river system},
   author  = {Ren, Hancheng and Zhao, Gang and Wang, Shuo and Slater, Louise and
              Yamazaki, Dai and Liu, Shu and Fan, Jingfang and Li, Xueying and
              Cui, Shibo and Yu, Ziming and Kang, Shengyu and Zuo, Depeng and
