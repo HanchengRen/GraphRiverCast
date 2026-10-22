@@ -8,7 +8,7 @@
 [![PyG 2.5+](https://img.shields.io/badge/PyG-2.5%2B-7B3FA0.svg)](https://pyg.org/)
 [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-**Topology enables learning-based hydrodynamic prediction of the global river system**
+**Learning global river system hydrodynamics with a topology-informed foundation model**
 
 [Hancheng Ren](mailto:)<sup>1,2</sup>,
 [Gang Zhao](mailto:zhao.g.eb91@m.isct.ac.jp)<sup>1,3,†</sup>,
@@ -601,8 +601,8 @@ If you use GraphRiverCast in your research, please cite:
 
 ```bibtex
 @article{ren2026topology,
-  title   = {Topology enables learning-based hydrodynamic prediction of the
-             global river system},
+  title   = {Learning global river system hydrodynamics with a
+             topology-informed foundation model},
   author  = {Ren, Hancheng and Zhao, Gang and Wang, Shuo and Slater, Louise and
              Yamazaki, Dai and Liu, Shu and Fan, Jingfang and Li, Xueying and
              Cui, Shibo and Yu, Ziming and Kang, Shengyu and Zuo, Depeng and

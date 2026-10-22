@@ -1,7 +1,7 @@
 [project]
 name = "graphrivercast"
 version = "2.0.0"
-description = "Topology enables learning-based hydrodynamic prediction of the global river system"
+description = "Learning global river system hydrodynamics with a topology-informed foundation model"
 readme = "README.md"
 license = {text = "CC-BY-NC-ND-4.0"}
 requires-python = ">=3.9"

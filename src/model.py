@@ -11,8 +11,8 @@ Architecture:
     GraphRiverCast      — Full model: embed → feat_mix → GNN → LSTM → readout
 
 Reference:
-    Ren et al. (2026). Topology enables learning-based hydrodynamic prediction
-    of the global river system. arXiv:2602.22293.
+    Ren et al. (2026). Learning global river system hydrodynamics with a
+    topology-informed foundation model. arXiv:2602.22293.
 """
 
 import numbers
