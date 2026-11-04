@@ -1,0 +1,2 @@
+# Only needed for demo.py --plot; CSV validation and aggregation use Python's standard library.
+matplotlib>=3.6

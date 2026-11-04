@@ -168,3 +168,16 @@ The inference script auto-detects the format.
 | GloFAS-ERA5 reanalysis | https://www.globalfloods.eu |
 
 For questions about data preparation, please open an issue on this repository.
+
+## 6. Runnable LamaH-CE Example
+
+The [LamaH-CE supervision-density demo](../examples/lamah_demo/) includes the
+study's exact nested gauge subsets, three-run per-gauge evaluation metrics and
+a CPU script that reproduces the score summaries and curves. Run it from the
+repository root:
+
+```bash
+python examples/lamah_demo/demo.py
+```
+
+See the example README for plotting instructions and data definitions.

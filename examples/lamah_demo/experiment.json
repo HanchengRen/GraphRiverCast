@@ -1,0 +1,56 @@
+{
+  "dataset": "LamaH-CE, matched to the study-specific Danube river network",
+  "dataset_doi": "10.5281/zenodo.4525244",
+  "network_resolution_degrees": 0.1,
+  "network_reaches": 1409,
+  "total_gauges": 325,
+  "supervision_percentages": [
+    10,
+    30,
+    50,
+    70,
+    90
+  ],
+  "supervised_counts": {
+    "10": 32,
+    "30": 97,
+    "50": 162,
+    "70": 227,
+    "90": 292
+  },
+  "training_seeds": [
+    27,
+    42,
+    123
+  ],
+  "station_subsets": "Fixed archived node-index memberships, shared across models and training seeds",
+  "conditions": [
+    "finetune",
+    "scratch",
+    "lstm_finetune"
+  ],
+  "temporal_partitions": {
+    "training": [
+      "2000-01-01",
+      "2009-12-31"
+    ],
+    "validation": [
+      "2010-01-01",
+      "2013-12-31"
+    ],
+    "testing": [
+      "2014-01-01",
+      "2017-12-31"
+    ]
+  },
+  "evaluation_window_days": {
+    "history": 21,
+    "forecast": 7,
+    "stride": 7
+  },
+  "aggregation": {
+    "within_run": "Median of per-gauge scores",
+    "across_runs": "Median of the three run-level medians",
+    "band": "Minimum to maximum of the three run-level medians"
+  }
+}
