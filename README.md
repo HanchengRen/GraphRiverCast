@@ -62,6 +62,8 @@ arXiv preprint, 2026
 
 ---
 
+**Model documentation:** See the [GraphRiverCast model card](MODEL_CARD.md) for intended uses, training and evaluation, reproducibility, and limitations.
+
 ## Table of Contents
 
 - [Quick Start](#-quick-start)
