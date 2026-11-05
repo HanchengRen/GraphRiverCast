@@ -115,41 +115,50 @@ of matched gauges. The accompanying [LamaH-CE demo](examples/lamah_demo/)
 provides the stored subset memberships and per-gauge metrics from three training
 runs at each supervision level.
 
-## Evaluation and reported performance
+## Evaluation and demonstrated capabilities
 
-The study evaluates complementary capabilities:
+Evaluation examines GraphRiverCast as a model of the connected river system,
+covering multivariate hydrodynamics, initial-state dependence, long-horizon
+stability, real-observation prediction and transfer across locations and scales.
+The manuscript presents the complete numerical results, lead-time curves,
+spatial distributions and baseline comparisons for each experiment.
 
-- Multivariate reconstruction of the CaMa-Flood reference field, including
-  lead-time-dependent ColdStart and HotStart comparisons and long autoregressive
-  rollouts.
-- Real-observation discharge prediction over the global temporal test period,
-  comparing GRC, a data-driven LSTM benchmark, CaMa-Flood and GloFAS-ERA5.
-- Spatial transfer using five-fold gauge holdouts, with the same fold assignments
-  across compared models.
-- Adaptation from the global 0.25° network to the finer 0.1° Danube network under
-  varying gauge-supervision densities.
-- Encoder ablations, retrained architecture ablations, integrated-gradient
-  attribution and feature-permutation sensitivity analysis.
+**ColdStart and HotStart hydrodynamic prediction.** Both regimes jointly predict
+discharge, water depth and channel storage across the global 0.25° river network.
+The controlled CaMa-Flood-reference experiment evaluates variable-specific and
+combined NSE across forecast lead times. HotStart benefits from supplied river
+states at the shortest leads, while ColdStart sustains predictive skill through
+long autoregressive rollouts far beyond its training horizon. The long-horizon
+experiment uses supplied future runoff forcing to examine internally generated
+error accumulation. The useful horizon of an operational forecast also depends
+on forcing accuracy and predictability. See Figure 2 and Extended Data Table 2.
 
-For the manuscript's 2018–2019 discharge benchmark at 1,996 gauges, the reported
-across-gauge medians are:
+**Prediction against real observations.** The global temporal benchmark evaluates
+daily discharge against GRDC observations using Nash–Sutcliffe efficiency (NSE),
+Kling–Gupta efficiency (KGE), min–max normalised RMSE and percent bias (PBIAS).
+The reported comparisons show improved discharge prediction after sparse-gauge
+fine-tuning relative to the LSTM, CaMa-Flood and GloFAS-ERA5 benchmarks, with
+performance distributions and geographical variation shown in Figure 4.
+High-flow performance and lead-time stability are assessed in Supplementary
+Figures 8 and 9. These observational assessments complement the multivariate
+simulation-reference experiments.
 
-| Metric | Fine-tuned GraphRiverCast |
-| --- | ---: |
-| Nash–Sutcliffe efficiency (NSE) | 0.458 |
-| Kling–Gupta efficiency (KGE) | 0.525 |
-| Min–max normalised RMSE | 0.11 |
-| Percent bias (PBIAS) | +2.8% |
+**Spatial generalisation and scale adaptation.** Five-fold gauge holdouts compare
+pre-trained and from-scratch GRC and LSTM models using the same fold assignments.
+The results show complementary contributions from network topology and global
+pre-training to prediction at held-out gauges. Regional experiments further
+demonstrate adaptation from the global 0.25° network to a finer 0.1° Danube
+network under varying gauge-supervision densities. See Figure 5, Supplementary
+Figure 10 and Supplementary Table 8. The accompanying LamaH-CE demo reproduces
+the archived supervision-density score aggregation.
 
-The LSTM benchmark has a reported median NSE of 0.367 under the same temporal
-comparison. These are manuscript results for the specified data and protocol;
-simulation-reference scores and gauge-observation scores describe different
-evaluation targets.
-
-The 700-day experiment evaluates internally generated error accumulation in
-pseudo-hindcasts with supplied future runoff forcing. It demonstrates stability
-under those forcing conditions; the useful horizon of an operational forecast
-also depends on the predictability and accuracy of its forcing.
+**Mechanistic evaluation.** Inference-time and retrained encoder ablations,
+integrated-gradient attribution and feature-permutation analysis examine how
+the model uses geomorphic information, forcing, topology and temporal memory.
+They show the stronger dependence of ColdStart on network structure and the
+greater reliance of HotStart on temporal information when historical river
+states are supplied. See Figure 3, Extended Data Table 3 and Supplementary
+Figure 5.
 
 ## Scope, biases and limitations
 
